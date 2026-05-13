@@ -3,7 +3,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CopyTextBu
 def get_modes_keyboard():
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Швидка перевірка", callback_data="mode_ortho")],
+            [InlineKeyboardButton(text="Орфографічна перевірка", callback_data="mode_ortho")],
             [InlineKeyboardButton(text="Лінгвістичний аналіз", callback_data="mode_grammar")],
             [InlineKeyboardButton(text="Стилістична адаптація", callback_data="mode_style")],
             [InlineKeyboardButton(text="Глибока корекція", callback_data="mode_full")]
