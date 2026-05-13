@@ -3,8 +3,9 @@ from aiogram import Router, F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramAPIError
 from aiogram.enums import ParseMode
+from aiogram.filters import StateFilter
 from states import CorrectionProcess
-from keyboards import get_modes_keyboard, get_result_keyboard
+from keyboards import get_modes_keyboard, get_result_keyboard, get_inline_cancel_keyboard
 import logging
 from services.gemini_api import process_text_with_gemini
 
@@ -12,20 +13,20 @@ router = Router()
 
 logger = logging.getLogger(__name__)
 
-@router.message(CorrectionProcess.WAITING_FOR_TEXT, F.text)
+@router.message(StateFilter(None, CorrectionProcess.WAITING_FOR_TEXT), F.text)
 async def handle_user_text(message: types.Message, state: FSMContext):
     await state.update_data(original_text=message.text)
     logger.info(f"User {message.from_user.id} submitted text. Length: {len(message.text)} chars.")
     await message.answer(
-        "Оберіть режим корекції:", 
+        "✅ Оберіть режим корекції:", 
         reply_markup=get_modes_keyboard()
     )
     await state.set_state(CorrectionProcess.CHOOSING_MODE)
 
-@router.message(CorrectionProcess.WAITING_FOR_TEXT, ~F.text)
+@router.message(StateFilter(None, CorrectionProcess.WAITING_FOR_TEXT), ~F.text)
 async def handle_non_text_input(message: types.Message):
     logger.info(f"User {message.from_user.id} submitted non-text-input.")
-    await message.answer("На жаль, я підтримую лише текст. Спробуйте надіслати текстове повідомлення.")
+    await message.answer("❗ На жаль, я підтримую лише текст. Спробуйте надіслати текстове повідомлення.")
 
 @router.callback_query(CorrectionProcess.CHOOSING_MODE, F.data.startswith("mode_"))
 async def handle_mode_selection(callback_query: types.CallbackQuery, state: FSMContext):
@@ -37,12 +38,18 @@ async def handle_mode_selection(callback_query: types.CallbackQuery, state: FSMC
     await state.set_state(CorrectionProcess.PROCESSING)
     
     try:
-        await callback_query.message.edit_text("⏳ Зачекайте, аналізую текст...")
+        await callback_query.message.edit_text(
+            "⏳ Зачекайте, аналізую текст...", 
+            reply_markup=get_inline_cancel_keyboard()
+        )
         
         logger.info(f"Gemini to user {callback_query.from_user.id}, mode: {selected_mode}")
 
         raw_response = await process_text_with_gemini(original_text, selected_mode)
         
+        if await state.get_state() != CorrectionProcess.PROCESSING:
+            return
+
         if "|||" in raw_response:
             parts = raw_response.split("|||")
             clean_text = parts[0].strip()
@@ -52,6 +59,11 @@ async def handle_mode_selection(callback_query: types.CallbackQuery, state: FSMC
             display_text = raw_response
 
         await state.update_data(clean_text=clean_text, display_text=display_text)
+
+        try:
+            await callback_query.message.delete()
+        except Exception:
+            pass
 
         result_msg = f"✅ <b>Аналіз завершено!</b>\n\n{display_text}"
 
@@ -112,3 +124,14 @@ async def restart_correction(callback_query: types.CallbackQuery, state: FSMCont
     await callback_query.answer()
     await state.set_state(CorrectionProcess.WAITING_FOR_TEXT)
     await callback_query.message.answer("Надішліть новий текст для перевірки.")
+
+@router.callback_query(F.data == "cancel_action")
+async def cancel_handler(callback_query: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback_query.answer("Дію скасовано")
+    try:
+        await callback_query.message.delete()
+    except Exception:
+        pass
+    await callback_query.message.answer("❌ Обробку скасовано. Надішліть новий текст для перевірки коли будете готові.")
+    await state.set_state(CorrectionProcess.WAITING_FOR_TEXT)
