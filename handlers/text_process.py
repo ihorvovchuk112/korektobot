@@ -78,6 +78,10 @@ async def handle_mode_selection(callback_query: types.CallbackQuery, state: FSMC
 
     except TelegramAPIError as tg_err:
         logger.error(f"Telegram Error: {tg_err}")
+        try:
+            await callback_query.message.delete()
+        except Exception:
+            pass
         await callback_query.message.answer(
             "❌ <b>Помилка форматування.</b>\n\nTelegram не зміг відобразити. Спробуйте надіслати текст ще раз або розбийте його на менші частини.",
             parse_mode=ParseMode.HTML
@@ -86,8 +90,12 @@ async def handle_mode_selection(callback_query: types.CallbackQuery, state: FSMC
 
     except Exception as e:
         logger.error(f"System Error: {e}")
+        try:
+            await callback_query.message.delete()
+        except Exception:
+            pass
         await callback_query.message.answer(
-            "⚠️ <b>Серверна помилка.</b>\n\nНа жаль, тимчасово недоступні або відмовили в обробці цього тексту. Спробуйте пізніше.",
+            "⚠️ <b>Серверна помилка.</b>\n\nНа жаль, сервери тимчасово недоступні або відмовили в обробці цього тексту. Спробуйте пізніше.",
             parse_mode=ParseMode.HTML
         )
         await state.set_state(CorrectionProcess.WAITING_FOR_TEXT)
